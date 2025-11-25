@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ஆஃப்லைன் இருப்பு கண்காணிப்பு</title>
+    <!-- Tailwind CSS ஏற்றப்படுகிறது -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+        }
+        /* பொத்தான் அசைவூட்டத்திற்கான தனிப்பயன் ஸ்டைல்கள் */
+        .quick-button {
+            transition: all 0.15s ease-in-out;
+            transform: scale(1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .quick-button:active {
+            transform: scale(0.98);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* அச்சிடும்போது (print) அறிக்கை தவிர மற்ற அனைத்தையும் மறைக்க மிகவும் உறுதியான ஸ்டைல்கள் */
+        @media print {
+            /* அச்சிடும் போது முழு ஆப் பகுதியின் அகலத்தையும் அதிகரிக்கவும் */
+            #app {
+                max-width: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+            }
+
+            /* #app உள்ளே உள்ள அனைத்து பகுதிகளையும் மறைக்கவும் */
+            #app > * {
+                display: none !important;
+            }
+            
+            /* #report-section-ஐ மட்டும் தெரியும்படி கட்டாயப்படுத்தவும் */
+            #report-section {
+                display: block !important;
+                margin: 0 !important;
+                padding: 20px 0 !important; 
+                border-top: none !important;
+                position: absolute; /* அறிக்கையை ஆவணத்தின் மேற்பகுதிக்கு நகர்த்தவும் */
+                top: 0;
+                left: 0;
+                width: 100%;
+            }
+
+            /* அச்சு பொத்தானை மறைக்கவும் */
+            #report-section .flex button {
+                display: none !important;
+            }
+            
+            /* அட்டவணை overflow-ஐ அச்சிடுவதற்கு சரிசெய்யவும் */
+            .overflow-x-auto {
+                overflow: visible !important;
+            }
+            .min-w-full {
+                width: 100% !important;
+            }
+            
+            /* அட்டவணை அடிக்குறிப்பு சரியாகத் தெரிவதை உறுதிசெய்யவும் */
+            #report-footer {
+                display: table-footer-group !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app" class="max-w-xl mx-auto p-4 md:p-8">
+        <header id="main-header" class="text-center mb-6">
+            <h1 class="text-3xl font-extrabold text-indigo-700">விரைவு இருப்பு புதுப்பிப்பு</h1>
+            <p class="text-sm text-gray-500 mt-1">உள்ளூர் சாதன சேமிப்பைப் பயன்படுத்தி உங்கள் இருப்பை நிர்வகிக்கவும்.</p>
+        </header>
+
+        <!-- Quick Select Buttons (விரைவுத் தேர்வு பொத்தான்கள்) -->
+        <div id="product-buttons" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
+            <!-- பொத்தான்கள் இங்கே செருகப்படும் -->
+        </div>
+
+        <!-- Product Detail/Update Section (தயாரிப்பு விவரம்/புதுப்பிப்பு பகுதி) -->
+        <div id="product-detail-card" class="bg-white p-6 rounded-xl shadow-2xl border-t-4 border-indigo-500 hidden">
+            <h2 class="text-xl font-bold mb-4 text-gray-800">தயாரிப்பு: <span id="detail-title"></span></h2>
+            
+            <form id="update-form" class="space-y-4">
+
+                <!-- Editable Product Info (திருத்தக்கூடிய தயாரிப்பு தகவல்) -->
+                <div class="pb-2 border-b border-gray-100">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">தயாரிப்பு பெயர்</label>
+                        <input type="text" id="input-name" required 
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-indigo-500">
+                    </div>
+                </div>
+
+                <!-- Read-Only Metrics Display (படிக்க மட்டும் அளவீடுகள் காட்சி) -->
+                <div class="grid grid-cols-2 gap-3 text-center bg-indigo-50 p-4 rounded-lg">
+                    <div class="col-span-1">
+                        <p class="text-2xl font-bold text-indigo-800" id="display-total">0</p>
+                        <p class="text-xs font-medium text-indigo-600 uppercase">மொத்தம் (OB + In)</p>
+                    </div>
+                    <div class="col-span-1">
+                        <p class="text-2xl font-bold text-indigo-800" id="display-sl">0</p>
+                        <p class="text-xs font-medium text-indigo-600 uppercase">SL (விற்கப்பட்ட அளவு)</p>
+                    </div>
+                </div>
+
+                <!-- Stock & Revenue Input Fields (இருப்பு மற்றும் வருவாய் உள்ளீட்டு புலங்கள்) -->
+                <div class="grid grid-cols-2 gap-4 pt-2 border-t border-gray-100">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">ஆரம்ப இருப்பு (OB)</label>
+                        <input type="number" id="input-ob" min="0" required 
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">உள் இருப்பு (In)</label>
+                        <input type="number" id="input-in" min="0" required 
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">மூடும் இருப்பு (CL)</label>
+                        <input type="number" id="input-cl" min="0" required 
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">உண்மையான வருவாய் (Amount)</label>
+                        <input type="number" id="input-amount" min="0" step="0.01" required 
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-indigo-500">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-sm font-medium text-gray-700">உண்மையான மாறுபாடு (EAmount - கையேடு)</label>
+                        <input type="number" id="input-eamount" step="0.01" required
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-indigo-500"
+                            placeholder="மாறுபாட்டுத் தொகையை உள்ளிடவும்">
+                    </div>
+                </div>
+
+                <div class="flex justify-between items-center pt-2">
+                    <button type="button" onclick="saveProductData(event)" class="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition duration-150 shadow-md mr-2">
+                        சேமித்து புதுப்பிக்கவும்
+                    </button>
+                    <button type="button" onclick="hideDetailCard()" class="bg-gray-200 text-gray-700 py-3 px-4 rounded-lg font-semibold hover:bg-gray-300 transition duration-150 shadow-md ml-2">
+                        மூடு
+                    </button>
+                </div>
+                <p id="save-status" class="text-sm text-center pt-2"></p>
+            </form>
+        </div>
+
+        <!-- Custom Product Input (தனிப்பயன் தயாரிப்பு உள்ளீடு) -->
+        <div id="custom-product-input" class="bg-yellow-50 p-4 rounded-xl shadow-md hidden mt-6">
+            <h3 class="text-lg font-bold text-yellow-800 mb-3">தனிப்பயன் தயாரிப்பைச் சேர்க்கவும்</h3>
+            <p id="custom-status" class="text-sm text-red-500 mb-3 hidden"></p>
+            <div class="space-y-3">
+                <input type="text" id="custom-name" placeholder="தயாரிப்பு பெயரை உள்ளிடவும் (எ.கா., சோடா)" 
+                    class="block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                <button onclick="addCustomProduct()" class="w-full bg-yellow-600 text-white py-2 rounded-lg font-semibold hover:bg-yellow-700 transition duration-150">
+                    விரைவுப் பொத்தான்களில் சேர்க்கவும்
+                </button>
+            </div>
+        </div>
+
+        <!-- Full Inventory Report Table (முழு இருப்பு அறிக்கை அட்டவணை) -->
+        <div id="report-section" class="mt-8 pt-6 border-t border-gray-300">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-indigo-700">முழு இருப்பு அறிக்கை</h2>
+                <button onclick="printReport()" class="bg-blue-500 text-white py-2 px-4 rounded-lg text-sm font-semibold hover:bg-blue-600 transition duration-150 shadow-md flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v6a2 2 0 002 2h12a2 2 0 002-2v-6a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm2 5V4h6v5H7zm-2 5a1 1 0 100 2h10a1 1 0 100-2H5z" clip-rule="evenodd" />
+                    </svg>
+                    அச்சு/ஸ்கிரீன்ஷாட் அறிக்கை
+                </button>
+            </div>
+            
+            <div class="overflow-x-auto shadow-lg rounded-xl">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-indigo-600 text-white">
+                        <tr>
+                            <th class="p-3 text-left text-xs font-medium uppercase tracking-wider rounded-tl-xl">தயாரிப்பு</th>
+                            <th class="p-3 text-center text-xs font-medium uppercase tracking-wider">OB</th>
+                            <th class="p-3 text-center text-xs font-medium uppercase tracking-wider">In</th>
+                            <th class="p-3 text-center text-xs font-medium uppercase tracking-wider">Total</th>
+                            <th class="p-3 text-center text-xs font-medium uppercase tracking-wider">CL</th>
+                            <th class="p-3 text-center text-xs font-medium uppercase tracking-wider">SL (Qty)</th>
+                            <th class="p-3 text-center text-xs font-medium uppercase tracking-wider">Amount (Actual)</th>
+                            <th class="p-3 text-center text-xs font-medium uppercase tracking-wider">EAmount (Variance)</th>
+                            <th class="p-3 text-center text-xs font-medium uppercase tracking-wider rounded-tr-xl">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventory-table" class="bg-white divide-y divide-gray-200">
+                        <!-- இருப்பு தரவு இங்கே செல்கிறது -->
+                    </tbody>
+                    <tfoot id="report-footer" class="bg-gray-200 font-bold text-gray-800">
+                        <!-- மொத்த மாறுபாடு இங்கே செருகப்படும் -->
+                    </tfoot>
+                </table>
+            </div>
+            
+            <p id="table-status" class="text-sm text-center text-gray-500 mt-3"></p>
+        </div>
+
+        <!-- Custom Delete Confirmation Section (தனிப்பயன் நீக்குதல் உறுதிப்படுத்தல் பகுதி) -->
+        <div id="delete-confirmation-section" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl relative mt-4 hidden">
+            <p class="font-bold">நீக்குதலை உறுதிப்படுத்தவும்</p>
+            <p id="delete-message" class="text-sm">[தயாரிப்பு பெயர்]-க்கான பதிவை நீக்க விரும்புகிறீர்களா?</p>
+            <div class="flex justify-end space-x-3 mt-3">
+                <button onclick="cancelDeletion()" class="bg-gray-300 text-gray-800 py-1 px-3 rounded-lg text-sm hover:bg-gray-400">ரத்துசெய்</button>
+                <button onclick="confirmDeletion()" id="confirm-delete-button" class="bg-red-600 text-white py-1 px-3 rounded-lg text-sm hover:bg-red-700">நிரந்தரமாக நீக்கவும்</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- Configuration and State (அமைப்பு மற்றும் நிலை) ---
+        const LOCAL_STORAGE_KEY = 'storeInventoryData';
+        
+        // முன்பே வரையறுக்கப்பட்ட தயாரிப்புகள்
+        const predefinedProducts = [
+            { name: 'Ganesh' },
+            { name: 'Hansh' },
+            { name: 'Coollip' },
+            { name: 'Gold' },
+            { name: 'Kings' },
+            { name: 'Wave' }
+        ];
+
+        let inventory = []; // அனைத்து தயாரிப்புப் பொருட்களையும் வைத்திருக்க வரிசை
+        let currentProduct = null; // திருத்தப்படும் தயாரிப்புப் பொருளை வைத்திருக்கும்
+        let productToDelete = null; // நீக்கப்பட வேண்டிய தயாரிப்பின் பெயரை வைத்திருக்கும்
+
+        // --- DOM Elements (DOM கூறுகள்) ---
+        const productButtonsEl = document.getElementById('product-buttons');
+        const detailCardEl = document.getElementById('product-detail-card');
+        const detailTitleEl = document.getElementById('detail-title');
+        const inventoryTableEl = document.getElementById('inventory-table');
+        const reportFooterEl = document.getElementById('report-footer');
+        const customProductInputEl = document.getElementById('custom-product-input');
+        const saveStatusEl = document.getElementById('save-status');
+        const customStatusEl = document.getElementById('custom-status');
+        const deleteConfirmationSection = document.getElementById('delete-confirmation-section');
+        const deleteMessageEl = document.getElementById('delete-message');
+
+        // உள்ளீட்டு கூறுகள்
+        const inputName = document.getElementById('input-name');
+        const inputOB = document.getElementById('input-ob');
+        const inputIn = document.getElementById('input-in');
+        const inputCL = document.getElementById('input-cl');
+        const inputAmount = document.getElementById('input-amount');
+        const inputEAmount = document.getElementById('input-eamount');
+
+        // காட்சி கூறுகள்
+        const displayTotal = document.getElementById('display-total');
+        const displaySL = document.getElementById('display-sl');
+        
+        // --- Helper Functions (உதவி செயல்பாடுகள்) ---
+
+        /**
+         * ஆரம்ப மதிப்புகளுடன் ஒரு வெற்று தயாரிப்புப் பொருளை உருவாக்குகிறது.
+         */
+        function createEmptyProduct(name) {
+            return {
+                name: name,
+                ob: 0,
+                in: 0,
+                cl: 0,
+                amount: 0.00,
+                eAmount: 0.00 // கையேடு உள்ளீடு
+            };
+        }
+
+        /**
+         * உள்ளூர் சேமிப்பகத்திலிருந்து சரக்குத் தரவை ஏற்றுகிறது அல்லது இயல்புநிலை தரவைத் தொடங்குகிறது.
+         */
+        function loadInventory() {
+            const storedData = localStorage.getItem(LOCAL_STORAGE_KEY);
+            if (storedData) {
+                try {
+                    inventory = JSON.parse(storedData);
+                    // விடுபட்ட இயல்புநிலை தயாரிப்புகளைச் சரிபார்த்து அவற்றைச் சேர்க்கவும்
+                    predefinedProducts.forEach(defProd => {
+                        if (!inventory.some(p => p.name === defProd.name)) {
+                            inventory.push(createEmptyProduct(defProd.name));
+                        }
+                    });
+                    // பழைய தரவு வடிவங்களை சுத்தம் செய்தல்
+                    inventory = inventory.map(p => {
+                        const { unitPrice, ...rest } = p; // unitPrice-ஐ அகற்றவும்
+                        return { ...rest, eAmount: p.eAmount !== undefined ? p.eAmount : 0.00 };
+                    });
+                    
+                } catch (e) {
+                    console.error("உள்ளூர் சேமிப்பக தரவைப் பாகுபடுத்துவதில் பிழை:", e);
+                    inventory = initializeDefaultInventory();
+                }
+            } else {
+                inventory = initializeDefaultInventory();
+            }
+            
+            renderAll(); 
+            
+            // பக்கம் ஏற்றப்பட்டவுடன் முதல் தயாரிப்பின் படிவத்தைத் தானாகவே காட்டவும்
+            if (inventory.length > 0) {
+                // DOM உறுப்புகள் அனைத்தும் வழங்கப்படுவதை உறுதிப்படுத்த ஒரு சிறிய தாமதத்தைப் பயன்படுத்தவும்
+                setTimeout(() => {
+                    showEditProduct(inventory[0].name); 
+                }, 100);
+            }
+        }
+
+        /**
+         * அனைத்து முன் வரையறுக்கப்பட்ட தயாரிப்புகளுடன் இருப்பைத் தொடங்குகிறது.
+         */
+        function initializeDefaultInventory() {
+            return predefinedProducts.map(p => createEmptyProduct(p.name));
+        }
+
+        /**
+         * தற்போதைய சரக்கு வரிசையை உள்ளூர் சேமிப்பகத்தில் சேமிக்கிறது.
+         */
+        function saveInventory() {
+            try {
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(inventory));
+                return true;
+            } catch (e) {
+                console.error("உள்ளூர் சேமிப்பகத்தில் சேமிப்பதில் பிழை:", e);
+                return false;
+            }
+        }
+
+        /**
+         * ஒரு தயாரிப்பிற்கான அளவீடுகளைக் கணக்கிடுகிறது.
+         */
+        function calculateMetrics(product) {
+            const OB = parseFloat(product.ob) || 0;
+            const In = parseFloat(product.in) || 0;
+            const CL = parseFloat(product.cl) || 0;
+            const Amount = parseFloat(product.amount) || 0;
+
+            const Total = OB + In;
+            const SL = Total - CL; // விற்கப்பட்ட/பயன்படுத்தப்பட்ட இருப்பு (அளவு)
+            
+            return {
+                Total: Math.max(0, Total).toFixed(0),
+                SL: Math.max(0, SL).toFixed(0),
+                AmountFormatted: Amount.toFixed(2),
+                EAmountSaved: parseFloat(product.eAmount).toFixed(2)
+            };
+        }
+
+        // --- Rendering Functions (காட்சிப்படுத்தும் செயல்பாடுகள்) ---
+
+        /**
+         * UI-யின் அனைத்து பகுதிகளையும் வழங்குகிறது.
+         */
+        function renderAll() {
+            renderButtons();
+            renderTable();
+        }
+
+        /**
+         * விரைவுத் தேர்வு பொத்தான்களை வழங்குகிறது.
+         */
+        function renderButtons() {
+            productButtonsEl.innerHTML = '';
+            
+            inventory.forEach(product => {
+                const button = document.createElement('button');
+                button.className = 'quick-button bg-indigo-600 text-white p-4 rounded-xl font-bold text-lg hover:bg-indigo-700';
+                button.textContent = product.name;
+                button.onclick = () => showEditProduct(product.name);
+                productButtonsEl.appendChild(button);
+            });
+
+            // தனிப்பயன் தயாரிப்பு பொத்தானைச் சேர்க்கவும்
+            const customButton = document.createElement('button');
+            customButton.className = 'quick-button bg-yellow-400 text-gray-800 p-4 rounded-xl font-bold text-lg hover:bg-yellow-500';
+            customButton.textContent = '+ புதியதைச் சேர்';
+            customButton.onclick = () => toggleCustomInput();
+            productButtonsEl.appendChild(customButton);
+        }
+
+        /**
+         * முக்கிய இருப்பு அறிக்கை அட்டவணையை வழங்குகிறது மற்றும் மொத்த EAmount-ஐ கணக்கிடுகிறது.
+         */
+        function renderTable() {
+            inventoryTableEl.innerHTML = '';
+            reportFooterEl.innerHTML = '';
+            let totalVariance = 0;
+
+            if (inventory.length === 0) {
+                document.getElementById('table-status').textContent = "இதுவரை எந்த தயாரிப்புகளும் கண்காணிக்கப்படவில்லை.";
+                return;
+            }
+            document.getElementById('table-status').textContent = "";
+
+            inventory.forEach(product => {
+                const metrics = calculateMetrics(product);
+                const EAmount = parseFloat(metrics.EAmountSaved); 
+                totalVariance += EAmount;
+
+                const varianceClass = EAmount < 0 ? 'text-red-600' : 'text-green-600';
+                
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-indigo-50 transition duration-75';
+                row.innerHTML = `
+                    <td class="p-3 whitespace-nowrap text-sm font-semibold text-gray-900">${product.name}</td>
+                    <td class="p-3 text-center text-sm text-gray-700">${product.ob}</td>
+                    <td class="p-3 text-center text-sm text-gray-700">${product.in}</td>
+                    <td class="p-3 text-center text-sm font-bold text-indigo-700">${metrics.Total}</td>
+                    <td class="p-3 text-center text-sm text-gray-700">${product.cl}</td>
+                    <td class="p-3 text-center text-sm font-medium text-blue-600">${metrics.SL}</td>
+                    <td class="p-3 text-center whitespace-nowrap text-sm text-gray-700">$${metrics.AmountFormatted}</td>
+                    <td class="p-3 text-center whitespace-nowrap text-sm font-bold ${varianceClass}">$${metrics.EAmountSaved}</td>
+                    <td class="p-3 text-center whitespace-nowrap text-sm font-medium">
+                        <button onclick="showEditProduct('${product.name}')" class="text-indigo-600 hover:text-indigo-800 p-1 rounded-full hover:bg-indigo-100 transition duration-150 mr-2">
+                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zm-5.646 12.384v-1.12l4.81-4.81 2.828 2.828-4.81 4.81h-1.12z" /></svg>
+                        </button>
+                        <button onclick="showDeleteConfirmation('${product.name}')" class="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100 transition duration-150">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-2 0v6a1 1 0 102 0V7z" clip-rule="evenodd" /></svg>
+                        </button>
+                    </td>
+                `;
+                inventoryTableEl.appendChild(row);
+            });
+            
+            // அட்டவணை அடிக்குறிப்பில் மொத்த மாறுபாட்டை வழங்கவும்
+            const totalVarianceClass = totalVariance < 0 ? 'text-red-600' : 'text-green-600';
+            const footerRow = document.createElement('tr');
+            footerRow.innerHTML = `
+                <td colspan="7" class="p-3 text-right text-base font-bold">மொத்த மாறுபாடு (EAmount):</td>
+                <td class="p-3 text-center text-base font-bold ${totalVarianceClass}">$${totalVariance.toFixed(2)}</td>
+                <td class="p-3"></td>
+            `;
+            reportFooterEl.appendChild(footerRow);
+        }
+
+        // --- Interaction Logic (ஊடாடல் தர்க்கம்) ---
+
+        /**
+         * நிலை செய்திகளைக் காட்ட உதவுகிறது.
+         */
+        function displayStatus(el, message, isError = false) {
+            el.textContent = message;
+            el.classList.remove('hidden');
+            el.className = isError ? "text-red-500 pt-2" : "text-green-600 pt-2";
+            setTimeout(() => {
+                el.textContent = "";
+                el.classList.add('hidden');
+            }, 5000);
+        }
+
+        /**
+         * தேர்ந்தெடுக்கப்பட்ட தயாரிப்புக்கான விவரம் அட்டையைக் காட்டுகிறது.
+         */
+        window.showEditProduct = (productName) => {
+            customProductInputEl.classList.add('hidden'); 
+            
+            currentProduct = inventory.find(p => p.name === productName);
+            
+            if (!currentProduct) {
+                displayStatus(saveStatusEl, "பிழை: தயாரிப்பு சரக்குகளில் இல்லை!", true);
+                return;
+            }
+
+            detailTitleEl.textContent = currentProduct.name;
+            
+            // உள்ளீட்டு புலங்களை நிரப்பவும்
+            inputName.value = currentProduct.name;
+            inputOB.value = currentProduct.ob;
+            inputIn.value = currentProduct.in;
+            inputCL.value = currentProduct.cl;
+            inputAmount.value = currentProduct.amount;
+            inputEAmount.value = currentProduct.eAmount;
+            
+            // மாற்றப்பட்ட காட்சி மதிப்புகளைப் புதுப்பிக்க உள்ளீட்டு மாற்ற கேட்பவர்களை அமைக்கவும்
+            inputOB.oninput = updateCalculatedDisplay;
+            inputIn.oninput = updateCalculatedDisplay;
+            inputCL.oninput = updateCalculatedDisplay;
+            inputAmount.oninput = updateCalculatedDisplay;
+
+            // ஏற்றப்படும்போது கணக்கீட்டை இயக்கவும்
+            updateCalculatedDisplay();
+
+            detailCardEl.classList.remove('hidden'); 
+            deleteConfirmationSection.classList.add('hidden'); // நீக்குதல் உறுதிப்படுத்தலை மறைக்கவும்
+            detailCardEl.scrollIntoView({ behavior: 'smooth' });
+        }
+
+
+        /**
+         * தயாரிப்பு விவரம் அட்டையை மறைக்கிறது.
+         */
+        window.hideDetailCard = () => {
+            detailCardEl.classList.add('hidden');
+            currentProduct = null;
+            saveStatusEl.textContent = "";
+        }
+
+        /**
+         * தற்போதைய உள்ளீட்டு மதிப்புகளின் அடிப்படையில் மொத்தம் மற்றும் SL காட்சிகளைப் புதுப்பிக்கிறது.
+         */
+        function updateCalculatedDisplay() {
+            if (!currentProduct) return;
+
+            const tempProduct = {
+                ob: inputOB.value,
+                in: inputIn.value,
+                cl: inputCL.value,
+                amount: inputAmount.value,
+                eAmount: inputEAmount.value
+            };
+
+            const metrics = calculateMetrics(tempProduct);
+            
+            displayTotal.textContent = metrics.Total;
+            displaySL.textContent = metrics.SL;
+        }
+
+        /**
+         * படிவத்திலிருந்து புதுப்பிக்கப்பட்ட தரவை சரக்கு மற்றும் உள்ளூர் சேமிப்பகத்தில் சேமிக்கிறது.
+         */
+        window.saveProductData = (event) => {
+            event.preventDefault();
+            if (!currentProduct) return;
+
+            const newName = inputName.value.trim();
+            const newOB = parseFloat(inputOB.value);
+            const newIn = parseFloat(inputIn.value);
+            const newCL = parseFloat(inputCL.value);
+            const newAmount = parseFloat(inputAmount.value);
+            const manualEAmount = parseFloat(inputEAmount.value);
+
+            if (!newName || isNaN(newOB) || isNaN(newIn) || isNaN(newCL) || isNaN(newAmount) || isNaN(manualEAmount)) {
+                displayStatus(saveStatusEl, "தயவுசெய்து அனைத்து உள்ளீட்டு புலங்களையும் சரியான எண்கள்/உரையுடன் நிரப்பவும்.", true);
+                return;
+            }
+            
+            // 1. தயாரிப்புப் பெயர் மாற்றத்தைக் கையாளவும்
+            const oldName = currentProduct.name;
+            if (newName !== oldName) {
+                if (inventory.some(p => p.name.toLowerCase() === newName.toLowerCase() && p.name !== oldName)) {
+                    displayStatus(saveStatusEl, `பிழை: '${newName}' என்ற தயாரிப்பு பெயர் ஏற்கனவே உள்ளது.`, true);
+                    return;
+                }
+            }
+
+            // 2. சரக்கு வரிசையில் தயாரிப்புப் பொருளைப் புதுப்பிக்கவும்
+            currentProduct.name = newName;
+            currentProduct.ob = newOB;
+            currentProduct.in = newIn;
+            currentProduct.cl = newCL;
+            currentProduct.amount = newAmount;
+            currentProduct.eAmount = manualEAmount; // கையேட்டில் உள்ளிடப்பட்ட EAmount-ஐ சேமிக்கவும்
+
+            // முழு சரக்கு வரிசையையும் சேமிக்கவும்
+            const success = saveInventory();
+
+            if (success) {
+                displayStatus(saveStatusEl, `${newName} வெற்றிகரமாக புதுப்பிக்கப்பட்டது!`, false);
+                renderAll(); // பொத்தான்கள் மற்றும் அட்டவணையைப் புதுப்பிக்கவும்
+                detailTitleEl.textContent = newName; // தலைப்பை உடனடியாகப் புதுப்பிக்கவும்
+            } else {
+                displayStatus(saveStatusEl, "பிழை: சாதன சேமிப்பகத்தில் தரவைச் சேமிக்க முடியவில்லை.", true);
+            }
+        }
+
+        /**
+         * தனிப்பயன் தயாரிப்பு உள்ளீட்டுப் பகுதியின் தெரிவுநிலையை மாற்றுகிறது.
+         */
+        function toggleCustomInput() {
+            hideDetailCard();
+            customProductInputEl.classList.toggle('hidden');
+        }
+
+        /**
+         * சரக்கு மற்றும் விரைவுப் பொத்தான்களில் புதிய தனிப்பயன் தயாரிப்பைச் சேர்க்கிறது.
+         */
+        window.addCustomProduct = () => {
+            const nameInput = document.getElementById('custom-name');
+            const newName = nameInput.value.trim();
+
+            if (!newName) {
+                displayStatus(customStatusEl, "தயவுசெய்து ஒரு தயாரிப்புப் பெயரை உள்ளிடவும்.", true);
+                return;
+            }
+            if (inventory.some(p => p.name.toLowerCase() === newName.toLowerCase())) {
+                displayStatus(customStatusEl, `தயாரிப்பு '${newName}' ஏற்கனவே உள்ளது.`, true);
+                return;
+            }
+
+            const newProduct = createEmptyProduct(newName);
+            inventory.push(newProduct);
+            
+            saveInventory();
+            renderAll();
+            nameInput.value = '';
+            customProductInputEl.classList.add('hidden');
+            
+            // புதிய தயாரிப்பின் விவர அட்டையைத் தானாகவே திறக்கவும்
+            showEditProduct(newName); 
+        }
+
+        // --- Print Functionality (அச்சு செயல்பாடு) ---
+
+        window.printReport = () => {
+            // இது அச்சு உரையாடலைத் தூண்டுகிறது மற்றும் அறிக்கையைத் தவிர மற்ற அனைத்தையும் மறைக்க @media print CSS விதிகளைப் பயன்படுத்துகிறது.
+            window.print();
+        }
+
+        // --- Delete Confirmation Logic (நீக்குதல் உறுதிப்படுத்தல் தர்க்கம்) ---
+
+        window.showDeleteConfirmation = (productName) => {
+            productToDelete = productName;
+            deleteMessageEl.textContent = `${productName} க்கான பதிவை நீக்க நீங்கள் உறுதியாக இருக்கிறீர்களா? இந்தச் செயல் நிரந்தரமானது மற்றும் செயல்தவிர்க்க முடியாது.`;
+            deleteConfirmationSection.classList.remove('hidden');
+            deleteConfirmationSection.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        window.cancelDeletion = () => {
+            productToDelete = null;
+            deleteConfirmationSection.classList.add('hidden');
+        }
+
+        window.confirmDeletion = () => {
+            if (!productToDelete) return;
+            
+            inventory = inventory.filter(p => p.name !== productToDelete);
+            saveInventory();
+            renderAll();
+            hideDetailCard(); 
+            displayStatus(document.getElementById('table-status'), `${productToDelete} க்கான பதிவு வெற்றிகரமாக நீக்கப்பட்டது.`, false);
+            
+            productToDelete = null;
+            deleteConfirmationSection.classList.add('hidden');
+        }
+
+
+        // --- Initialization (தொடக்கம்) ---
+        document.addEventListener('DOMContentLoaded', loadInventory);
+
+    </script>
+</body>
+</html>
